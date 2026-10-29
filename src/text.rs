@@ -13,7 +13,16 @@ use crate::fx::Emissive;
 use crate::palette::{PALETTES, Rgb, WHITE, mix};
 
 pub const GLYPH_W: usize = 5;
-pub const GLYPH_H: usize = 7;
+/// Glyphs are 5x7 letters plus one row on top for umlaut dots.
+pub const GLYPH_H: usize = 8;
+
+/// Letters that carry a diaeresis: the base glyph plus dots above it.
+const UMLAUTS: &[(char, char)] = &[('Ä', 'A'), ('Ö', 'O'), ('Ü', 'U')];
+
+/// Uppercase a character, including non-ASCII accented input.
+pub fn upper(ch: char) -> char {
+    ch.to_uppercase().next().unwrap_or(ch)
+}
 
 /// Bit rows, top to bottom. `1` is a lit pixel.
 const FONT: &[(char, &str)] = &[
@@ -59,7 +68,6 @@ const FONT: &[(char, &str)] = &[
     (',', "00000 00000 00000 00000 00110 00110 00100"),
     ('\'', "00100 00100 00000 00000 00000 00000 00000"),
     ('-', "00000 00000 00000 11111 00000 00000 00000"),
-    ('_', "00000 00000 00000 00000 00000 00000 11111"),
     ('+', "00000 00100 00100 11111 00100 00100 00000"),
     ('=', "00000 00000 11111 00000 11111 00000 00000"),
     ('/', "00001 00010 00010 00100 01000 01000 10000"),
@@ -79,16 +87,30 @@ const FONT: &[(char, &str)] = &[
 const FALLBACK: &str = "01110 10001 00001 00010 00100 00000 00100";
 
 /// Bitmap rows for `ch`, falling back to `?`.
+///
+/// The top row is reserved for umlaut dots; ordinary letters use the bottom
+/// seven rows and `_` renders as blank space.
 pub fn bitmap(ch: char) -> [u8; GLYPH_H] {
-    let ch = ch.to_ascii_uppercase();
+    let ch = upper(ch);
+    if ch == '_' || ch == ' ' {
+        return [0u8; GLYPH_H];
+    }
+    let base = UMLAUTS
+        .iter()
+        .find(|(umlaut, _)| *umlaut == ch)
+        .map(|(_, base)| *base)
+        .unwrap_or(ch);
     let rows = FONT
         .iter()
-        .find(|(c, _)| *c == ch)
+        .find(|(c, _)| *c == base)
         .map(|(_, art)| *art)
         .unwrap_or(FALLBACK);
     let mut out = [0u8; GLYPH_H];
-    for (i, word) in rows.split_whitespace().take(GLYPH_H).enumerate() {
-        out[i] = u8::from_str_radix(word, 2).unwrap_or(0);
+    if base != ch {
+        out[0] = 0b01010;
+    }
+    for (i, word) in rows.split_whitespace().take(GLYPH_H - 1).enumerate() {
+        out[i + 1] = u8::from_str_radix(word, 2).unwrap_or(0);
     }
     out
 }
@@ -166,7 +188,15 @@ pub struct Glyph {
 }
 
 impl Glyph {
-    pub fn new(ch: char, cx: f32, cy: f32, scale: f32, color: Rgb, rng: &mut StdRng) -> Self {
+    pub fn new(
+        ch: char,
+        cx: f32,
+        cy: f32,
+        scale: f32,
+        color: Rgb,
+        speed: f32,
+        rng: &mut StdRng,
+    ) -> Self {
         let mut sparks = Vec::new();
         for (col, row) in dots(ch) {
             let tx = cx + (col as f32 + 0.5 - GLYPH_W as f32 * 0.5) * scale;
@@ -197,9 +227,9 @@ impl Glyph {
             color,
             sparks,
             age: 0.0,
-            form: 0.65,
-            hold: 2.4,
-            fade: 1.4,
+            form: (0.65 / speed).max(0.32),
+            hold: 2.4 / speed,
+            fade: 1.4 / speed,
         }
     }
 
@@ -230,7 +260,7 @@ impl Glyph {
             let t = ((self.age - s.delay) / self.form).clamp(0.0, 1.0);
             // Sparks are dim while they fly and brighten as they take position.
             let twinkle = 0.88 + 0.12 * (self.age * 5.0 + s.phase).sin();
-            let b = 0.075 * gain * fade * twinkle * (0.35 + 0.65 * t);
+            let b = 0.09 * gain * fade * twinkle * (0.35 + 0.65 * t);
             let white = (1.0 - t) * 0.3 + if t > 0.9 { 0.12 } else { 0.0 };
             em.streak(s.px, s.py, s.x, s.y, mix(self.color, WHITE, white), b);
         }
@@ -243,6 +273,14 @@ pub struct Launch {
     pub ch: char,
     pub color: Rgb,
     pub slot: Slot,
+}
+
+/// What the message wants done on this frame.
+#[derive(Default, Clone, Copy, Debug)]
+pub struct Tick {
+    pub launch: Option<Launch>,
+    /// A new word just started: a good moment for a background salvo.
+    pub new_word: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -263,17 +301,15 @@ pub struct Message {
     scale: f32,
     phase: Phase,
     timer: f32,
+    /// Pace multiplier for the whole message (1.0 = default).
+    speed: f32,
 }
 
 impl Message {
-    pub fn new(text: &str, palette: usize, rng: &mut StdRng) -> Option<Self> {
+    pub fn new(text: &str, palette: usize, speed: f32, rng: &mut StdRng) -> Option<Self> {
         let words: Vec<Vec<char>> = text
             .split_whitespace()
-            .map(|w| {
-                w.chars()
-                    .map(|c| c.to_ascii_uppercase())
-                    .collect::<Vec<_>>()
-            })
+            .map(|w| w.chars().map(upper).collect::<Vec<_>>())
             .filter(|w: &Vec<char>| !w.is_empty())
             .collect();
         if words.is_empty() {
@@ -288,7 +324,8 @@ impl Message {
             line_pos: 0,
             scale: 1.0,
             phase: Phase::Gap,
-            timer: 1.2,
+            timer: 1.2 / speed,
+            speed,
         };
         msg.recolor(palette, rng);
         Some(msg)
@@ -320,27 +357,29 @@ impl Message {
         self.words.len()
     }
 
-    /// Advance the schedule and return the next letter to launch, if any.
-    pub fn tick(&mut self, dt: f32, w: f32, h: f32) -> Option<Launch> {
+    /// Advance the schedule and report what should happen this frame.
+    pub fn tick(&mut self, dt: f32, w: f32, h: f32) -> Tick {
+        let mut tick = Tick::default();
         self.timer -= dt;
         if self.timer > 0.0 {
-            return None;
+            return tick;
         }
+        let speed = self.speed.max(0.05);
         match self.phase {
             Phase::Gap => {
                 self.phase = Phase::Show;
                 self.next_letter = 0;
                 self.line_len = 0;
                 self.timer = 0.0;
-                None
+                tick.new_word = true;
             }
             Phase::Show => {
                 let word_len = self.words[self.word].len();
                 if self.line_len == 0 {
                     if self.next_letter >= word_len {
                         self.phase = Phase::Hold;
-                        self.timer = 4.2;
-                        return None;
+                        self.timer = 4.2 / speed;
+                        return tick;
                     }
                     let per_line = letters_per_line(w);
                     // Every line of a wrapped word keeps the same letter size.
@@ -360,28 +399,35 @@ impl Message {
                     self.phase = Phase::Hold;
                     self.line_len = 0;
                     self.timer = if self.next_letter < word_len {
-                        3.2
+                        3.2 / speed
                     } else {
-                        4.4
+                        4.4 / speed
                     };
                 } else {
-                    self.timer = 0.13;
+                    self.timer = 0.13 / speed;
                 }
-                Some(Launch { ch, color, slot })
+                // `_` reserves a gap in the line without firing a shell.
+                if ch != '_' {
+                    tick.launch = Some(Launch { ch, color, slot });
+                }
             }
             Phase::Hold => {
                 if self.next_letter < self.words[self.word].len() {
                     self.phase = Phase::Show;
-                    self.timer = 0.25;
+                    self.timer = 0.25 / speed;
                 } else {
                     self.word = (self.word + 1) % self.words.len();
                     self.next_letter = 0;
                     self.phase = Phase::Gap;
-                    self.timer = if self.word == 0 { 2.6 } else { 1.2 };
+                    self.timer = if self.word == 0 {
+                        2.6 / speed
+                    } else {
+                        1.2 / speed
+                    };
                 }
-                None
             }
         }
+        tick
     }
 }
 
@@ -394,7 +440,7 @@ mod tests {
     fn every_glyph_is_well_formed() {
         for (ch, art) in FONT {
             let rows: Vec<&str> = art.split_whitespace().collect();
-            assert_eq!(rows.len(), GLYPH_H, "glyph {ch} needs {GLYPH_H} rows");
+            assert_eq!(rows.len(), GLYPH_H - 1, "glyph {ch} row count");
             for row in rows {
                 assert_eq!(row.len(), GLYPH_W, "glyph {ch} row width");
                 assert!(
@@ -445,7 +491,7 @@ mod tests {
     #[test]
     fn glyphs_settle_onto_their_targets() {
         let mut rng = StdRng::seed_from_u64(7);
-        let mut g = Glyph::new('A', 100.0, 50.0, 2.5, [1.0, 1.0, 1.0], &mut rng);
+        let mut g = Glyph::new('A', 100.0, 50.0, 2.5, [1.0, 1.0, 1.0], 1.0, &mut rng);
         for _ in 0..120 {
             g.update(1.0 / 60.0);
         }
@@ -458,11 +504,11 @@ mod tests {
     #[test]
     fn message_launches_every_letter_once_and_loops() {
         let mut rng = StdRng::seed_from_u64(11);
-        let mut msg = Message::new("AB CD", 0, &mut rng).unwrap();
+        let mut msg = Message::new("AB CD", 0, 1.0, &mut rng).unwrap();
         assert_eq!(msg.word_count(), 2);
         let mut seen = Vec::new();
         for _ in 0..60 * 21 {
-            if let Some(l) = msg.tick(1.0 / 60.0, 160.0, 96.0) {
+            if let Some(l) = msg.tick(1.0 / 60.0, 160.0, 96.0).launch {
                 seen.push(l.ch);
             }
         }
@@ -474,10 +520,10 @@ mod tests {
     #[test]
     fn long_words_are_split_into_lines_without_losing_letters() {
         let mut rng = StdRng::seed_from_u64(3);
-        let mut msg = Message::new("CONGRATULATIONS", 0, &mut rng).unwrap();
+        let mut msg = Message::new("CONGRATULATIONS", 0, 1.0, &mut rng).unwrap();
         let mut seen = Vec::new();
         for _ in 0..60 * 8 {
-            if let Some(l) = msg.tick(1.0 / 60.0, 160.0, 96.0) {
+            if let Some(l) = msg.tick(1.0 / 60.0, 160.0, 96.0).launch {
                 seen.push(l.ch);
             }
         }
@@ -486,8 +532,62 @@ mod tests {
     }
 
     #[test]
+    fn umlauts_are_the_base_letter_with_dots() {
+        for (umlaut, base) in UMLAUTS {
+            let g = bitmap(*umlaut);
+            assert_eq!(g[0], 0b01010, "{umlaut} should have dots on the top row");
+            let plain = bitmap(*base);
+            assert_eq!(&g[1..], &plain[1..], "{umlaut} body should match {base}");
+        }
+        // Lowercase umlauts work too.
+        assert_eq!(bitmap('ä'), bitmap('Ä'));
+    }
+
+    #[test]
+    fn underscore_is_blank_and_reserves_a_gap() {
+        assert!(dots('_').is_empty());
+        let mut rng = StdRng::seed_from_u64(4);
+        let mut msg = Message::new("A_C", 0, 1.0, &mut rng).unwrap();
+        let mut launches = Vec::new();
+        for _ in 0..60 * 3 {
+            if let Some(l) = msg.tick(1.0 / 60.0, 160.0, 96.0).launch {
+                launches.push(l);
+            }
+        }
+        let chars: Vec<char> = launches.iter().map(|l| l.ch).collect();
+        assert_eq!(chars, vec!['A', 'C'], "underscore must not fire a shell");
+        let pitch = launches[1].slot.x - launches[0].slot.x;
+        assert!(pitch > 8.0, "the gap should take a slot, pitch was {pitch}");
+    }
+
+    #[test]
+    fn speed_scales_the_schedule() {
+        let mut rng = StdRng::seed_from_u64(5);
+        let mut slow = Message::new("ABC", 0, 1.0, &mut rng).unwrap();
+        let mut fast = Message::new("ABC", 0, 2.0, &mut rng).unwrap();
+        let mut slow_times = Vec::new();
+        let mut fast_times = Vec::new();
+        let dt = 1.0 / 60.0;
+        for i in 0..60 * 4 {
+            let t = i as f32 * dt;
+            if slow.tick(dt, 160.0, 96.0).launch.is_some() {
+                slow_times.push(t);
+            }
+            if fast.tick(dt, 160.0, 96.0).launch.is_some() {
+                fast_times.push(t);
+            }
+        }
+        assert_eq!(slow_times.len(), 3);
+        assert_eq!(fast_times.len(), 3);
+        assert!(
+            fast_times[2] < slow_times[2] * 0.75,
+            "speed multiplier had no effect: {slow_times:?} vs {fast_times:?}"
+        );
+    }
+
+    #[test]
     fn an_empty_message_is_rejected() {
         let mut rng = StdRng::seed_from_u64(3);
-        assert!(Message::new("   \n\t ", 0, &mut rng).is_none());
+        assert!(Message::new("   \n\t ", 0, 1.0, &mut rng).is_none());
     }
 }

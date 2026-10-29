@@ -49,9 +49,14 @@ cargo run --release -- --text "HAPPY BIRTHDAY"
 Each word becomes its own salvo: one rocket per letter, launched left to right,
 so the word writes itself across the sky before the next one goes up.
 
-- Letters and digits use a 5x7 shell pattern (`A-Z`, `0-9`, `!?.,'-_+=/: #*&<>()%`
-  and `♥`); anything else falls back to `?`.
+- Letters and digits use a 5x7 shell pattern (`A-Z`, `Ä Ö Ü`, `0-9`,
+  `!?.,'-+=/: #*&<>()%` and `♥`); anything else falls back to `?`.
+- `_` is a gap: it takes a letter's place in the line but fires no shell, so
+  `HAPPY_BIRTHDAY` puts a space between the two halves without splitting them
+  into separate salvos.
+- Every word also gets a salvo of ordinary shells low in the sky as a backdrop.
 - Long words wrap onto another line at the same letter size.
+- `--text-speed` scales the whole pacing (2 = twice as fast, 0.5 = leisurely).
 - The message loops forever, so it works as a party screensaver.
 
 ![HAPPY BIRTHDAY spelled with letter shells](docs/text.png)
@@ -76,6 +81,7 @@ cargo run --release -- --any-key
 --palette <NAME>     Colour palette (see --palettes) [default: random]
 --seed <SEED>        Seed the show for a reproducible display
 --text <TEXT>        Spell a message with letter shells, one word at a time
+--text-speed <MULT>  Pace of --text (1.0 = default, 2.0 = twice as fast)
 --any-key            Exit as soon as any key is pressed
 --palettes           List the available palettes and exit
 ```

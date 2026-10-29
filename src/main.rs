@@ -11,7 +11,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use fireworks::app::App;
+use fireworks::app::{App, Options};
 use fireworks::fireworks::Kind;
 use fireworks::input::Input;
 use fireworks::palette::{find_palette, palette_names};
@@ -45,6 +45,10 @@ struct Args {
     /// Spell a message with letter shells, one word at a time
     #[arg(long, value_name = "TEXT")]
     text: Option<String>,
+
+    /// Pace of --text: 1.0 is the default, 2.0 shows words twice as fast
+    #[arg(long, value_name = "MULT", default_value_t = 1.0)]
+    text_speed: f32,
 
     /// Exit as soon as any key is pressed
     #[arg(long)]
@@ -109,8 +113,17 @@ fn main() {
         None => None,
     };
 
+    let options = Options {
+        density: args.density.max(0.05),
+        palette,
+        any_key: args.any_key,
+        kind,
+        text: args.text.clone(),
+        text_speed: args.text_speed,
+    };
+
     if let Some(path) = &args.screenshot {
-        match screenshot_mode(&args, path, seed, palette, kind) {
+        match screenshot_mode(&args, path, seed, &options) {
             Ok(()) => println!("wrote {}", path.display()),
             Err(e) => {
                 eprintln!("screenshot failed: {e}");
@@ -120,7 +133,7 @@ fn main() {
         return;
     }
 
-    if let Err(e) = run(args, seed, palette, kind) {
+    if let Err(e) = run(args, seed, options) {
         eprintln!("error: {e}");
         std::process::exit(1);
     }
@@ -140,15 +153,8 @@ fn default_seed() -> u64 {
         ^ (std::process::id() as u64) << 32
 }
 
-fn run(args: Args, seed: u64, palette: Option<usize>, kind: Option<Kind>) -> io::Result<()> {
-    let mut app = App::new(
-        seed,
-        args.density.max(0.05),
-        palette,
-        args.any_key,
-        kind,
-        args.text.clone(),
-    );
+fn run(args: Args, seed: u64, options: Options) -> io::Result<()> {
+    let mut app = App::new(seed, options);
 
     terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -221,19 +227,11 @@ fn screenshot_mode(
     args: &Args,
     path: &std::path::Path,
     seed: u64,
-    palette: Option<usize>,
-    kind: Option<Kind>,
+    options: &Options,
 ) -> Result<(), String> {
     let (w, h) =
         parse_size(&args.size).ok_or_else(|| "invalid --size, expected WxH".to_string())?;
-    let mut app = App::new(
-        seed,
-        args.density.max(0.05),
-        palette,
-        args.any_key,
-        kind,
-        args.text.clone(),
-    );
+    let mut app = App::new(seed, options.clone());
     app.ensure(w as usize, h as usize);
 
     let steps = (args.warmup.max(0.0) * 60.0) as usize;

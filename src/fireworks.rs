@@ -178,23 +178,20 @@ pub struct Fireworks {
     pub total_launched: u64,
     pub glyphs: Vec<Glyph>,
     pub message: Option<Message>,
+    text_speed: f32,
 }
 
 impl Fireworks {
     pub fn new(
         w: f32,
         h: f32,
-        mut rng: StdRng,
+        rng: StdRng,
         density: f32,
         forced_palette: Option<usize>,
         forced_kind: Option<Kind>,
-        text: Option<&str>,
     ) -> Self {
         let count_scale = ((w * h) / (160.0 * 100.0)).clamp(0.35, 1.8);
-        let message = text.and_then(|t| {
-            let palette = forced_palette.unwrap_or_else(|| rng.random_range(0..PALETTES.len()));
-            Message::new(t, palette, &mut rng)
-        });
+        let message = None;
         Self {
             particles: Vec::new(),
             rockets: Vec::new(),
@@ -212,7 +209,17 @@ impl Fireworks {
             total_launched: 0,
             glyphs: Vec::new(),
             message,
+            text_speed: 1.0,
         }
+    }
+
+    /// Switch the show into message mode: spell `text`, one word at a time.
+    pub fn spell(&mut self, text: &str, speed: f32) {
+        self.text_speed = speed.clamp(0.2, 5.0);
+        let palette = self
+            .forced_palette
+            .unwrap_or_else(|| self.rng.random_range(0..PALETTES.len()));
+        self.message = Message::new(text, palette, self.text_speed, &mut self.rng);
     }
 
     pub fn resize(&mut self, w: f32, h: f32) {
@@ -355,6 +362,27 @@ impl Fireworks {
         self.launch_shell(shell, x, target_x, target_y, wobble);
     }
 
+    /// A handful of ordinary shells to keep the sky alive around a word.
+    fn background_salvo(&mut self) {
+        let n = self.rng.random_range(2..5);
+        for i in 0..n {
+            let kind = self.pick_kind();
+            let mut shell = self.shell(kind);
+            // Small and low, so the word above keeps its air.
+            shell.speed *= 0.7;
+            let x = if i % 2 == 0 {
+                self.w * self.rng.random_range(0.10..0.28)
+            } else {
+                self.w * self.rng.random_range(0.72..0.90)
+            };
+            let target_y = self.h * self.rng.random_range(0.58..0.72);
+            let target_x = (x + self.rng.random_range(-0.04..0.04) * self.w)
+                .clamp(self.w * 0.05, self.w * 0.95);
+            let wobble = self.rng.random_range(0.5..2.5);
+            self.launch_shell(shell, x, target_x, target_y, wobble);
+        }
+    }
+
     /// Send a letter shell to an exact spot so it lands in the layout.
     pub fn launch_letter(&mut self, letter: Launch) {
         let shell = Shell {
@@ -412,11 +440,15 @@ impl Fireworks {
     }
 
     pub fn update(&mut self, dt: f32) {
-        let launch = self
+        let tick = self
             .message
             .as_mut()
-            .and_then(|m| m.tick(dt, self.w, self.h));
-        if let Some(letter) = launch {
+            .map(|m| m.tick(dt, self.w, self.h))
+            .unwrap_or_default();
+        if tick.new_word {
+            self.background_salvo();
+        }
+        if let Some(letter) = tick.launch {
             self.launch_letter(letter);
         }
         for g in &mut self.glyphs {
@@ -738,8 +770,15 @@ impl Fireworks {
                 }
             }
             Kind::Letter(ch) => {
-                self.glyphs
-                    .push(Glyph::new(ch, x, y, shell.scale, shell.a, &mut self.rng));
+                self.glyphs.push(Glyph::new(
+                    ch,
+                    x,
+                    y,
+                    shell.scale,
+                    shell.a,
+                    self.text_speed,
+                    &mut self.rng,
+                ));
                 self.flashes.push(Flash {
                     x,
                     y,

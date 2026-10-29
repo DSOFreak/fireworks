@@ -12,6 +12,31 @@ use crate::render::Renderer;
 use crate::sky::Sky;
 use crate::ui;
 
+/// Everything the show needs to know before it starts.
+#[derive(Clone, Debug)]
+pub struct Options {
+    pub density: f32,
+    pub palette: Option<usize>,
+    pub any_key: bool,
+    pub kind: Option<Kind>,
+    pub text: Option<String>,
+    /// Pace multiplier for `text` (1.0 = default, 2.0 = twice as fast).
+    pub text_speed: f32,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            density: 1.0,
+            palette: None,
+            any_key: false,
+            kind: None,
+            text: None,
+            text_speed: 1.0,
+        }
+    }
+}
+
 pub struct App {
     pub show: Fireworks,
     pub em: Emissive,
@@ -32,24 +57,27 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(
-        seed: u64,
-        density: f32,
-        palette: Option<usize>,
-        any_key: bool,
-        kind: Option<Kind>,
-        text: Option<String>,
-    ) -> Self {
+    pub fn new(seed: u64, options: Options) -> Self {
+        let Options {
+            density,
+            palette,
+            any_key,
+            kind,
+            text,
+            text_speed,
+        } = options;
         let mut rng = StdRng::seed_from_u64(seed);
-        let show = Fireworks::new(
+        let mut show = Fireworks::new(
             1.0,
             1.0,
             StdRng::seed_from_u64(seed ^ 0x9e37_79b9_7f4a_7c15),
             density,
             palette,
             kind,
-            text.as_deref(),
         );
+        if let Some(text) = text.as_deref() {
+            show.spell(text, text_speed);
+        }
         Self {
             show,
             em: Emissive::new(1, 1),
