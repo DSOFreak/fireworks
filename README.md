@@ -22,6 +22,8 @@ assets, no network, no configuration required.
   doubles the vertical resolution and keeps sparks square.
 - **Show dynamics** — random pacing, twin shells, and occasional multi-shell
   finales, so no two minutes look the same.
+- **Spell a message** — `--text "HAPPY BIRTHDAY"` turns each word into a salvo
+  of letter shells that write themselves across the sky.
 - **Screensaver friendly** — `--any-key` quits on the first key press; `--seed`
   makes a show reproducible.
 
@@ -37,6 +39,22 @@ assets, no network, no configuration required.
 | `d`                | performance stats |
 | `h`                | help |
 | `q` / `esc`        | quit |
+
+## Spell a message
+
+```sh
+cargo run --release -- --text "HAPPY BIRTHDAY"
+```
+
+Each word becomes its own salvo: one rocket per letter, launched left to right,
+so the word writes itself across the sky before the next one goes up.
+
+- Letters and digits use a 5x7 shell pattern (`A-Z`, `0-9`, `!?.,'-_+=/: #*&<>()%`
+  and `♥`); anything else falls back to `?`.
+- Long words wrap onto another line at the same letter size.
+- The message loops forever, so it works as a party screensaver.
+
+![HAPPY BIRTHDAY spelled with letter shells](docs/text.png)
 
 ## Run it
 
@@ -57,6 +75,7 @@ cargo run --release -- --any-key
 --density <DENSITY>  Launch rate multiplier [default: 1]
 --palette <NAME>     Colour palette (see --palettes) [default: random]
 --seed <SEED>        Seed the show for a reproducible display
+--text <TEXT>        Spell a message with letter shells, one word at a time
 --any-key            Exit as soon as any key is pressed
 --palettes           List the available palettes and exit
 ```

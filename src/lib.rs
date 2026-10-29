@@ -11,4 +11,5 @@ pub mod palette;
 pub mod render;
 pub mod sky;
 pub mod snapshot;
+pub mod text;
 pub mod ui;

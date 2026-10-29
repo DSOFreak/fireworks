@@ -6,7 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 fn show(seed: u64, w: u16, h: u16, frames: usize) -> App {
-    let mut app = App::new(seed, 1.5, None, false, None);
+    let mut app = App::new(seed, 1.5, None, false, None, None);
     app.ensure(w as usize, h as usize);
     for _ in 0..frames {
         app.update(1.0 / 60.0);
@@ -128,7 +128,7 @@ fn pause_freezes_the_simulation() {
 
 #[test]
 fn any_key_mode_quits_on_a_letter() {
-    let mut app = App::new(1, 1.0, None, true, None);
+    let mut app = App::new(1, 1.0, None, true, None, None);
     app.on_key(KeyPress::plain(Key::Char('x')));
     assert!(app.quit);
 }
@@ -143,4 +143,39 @@ fn resize_keeps_the_show_alive() {
     for p in &app.show.particles {
         assert!(p.x.is_finite());
     }
+}
+
+#[test]
+fn a_message_spells_itself_out() {
+    let mut app = App::new(3, 1.0, None, false, None, Some("HI".to_string()));
+    app.ensure(120, 36);
+    for _ in 0..60 * 5 {
+        app.update(1.0 / 60.0);
+    }
+    assert!(
+        !app.show.glyphs.is_empty(),
+        "the letter shells never formed a glyph"
+    );
+    // Text mode keeps the sky clear: only the letters are fired.
+    assert!(
+        app.show.total_launched <= 3,
+        "random shells leaked into text mode"
+    );
+    let mut buf = Buffer::empty(Rect::new(0, 0, 120, 36));
+    app.render(&mut buf);
+}
+
+#[test]
+fn text_mode_still_quits_and_renders_at_tiny_sizes() {
+    let mut app = App::new(4, 1.0, None, false, None, Some("HELLO".to_string()));
+    for (w, h) in [(1u16, 1u16), (12, 6), (40, 12)] {
+        app.ensure(w as usize, h as usize);
+        for _ in 0..120 {
+            app.update(1.0 / 60.0);
+        }
+        let mut buf = Buffer::empty(Rect::new(0, 0, w, h));
+        app.render(&mut buf);
+    }
+    app.on_key(KeyPress::plain(Key::Char('q')));
+    assert!(app.quit);
 }

@@ -38,6 +38,7 @@ impl App {
         palette: Option<usize>,
         any_key: bool,
         kind: Option<Kind>,
+        text: Option<String>,
     ) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
         let show = Fireworks::new(
@@ -47,6 +48,7 @@ impl App {
             density,
             palette,
             kind,
+            text.as_deref(),
         );
         Self {
             show,
@@ -182,7 +184,7 @@ impl App {
             Some(i) if i + 1 < PALETTES.len() => Some(i + 1),
             Some(_) => None,
         };
-        self.show.forced_palette = self.palette_idx;
+        self.show.set_palette(self.palette_idx);
         let name = match self.palette_idx {
             None => "random",
             Some(i) => PALETTES[i].name,

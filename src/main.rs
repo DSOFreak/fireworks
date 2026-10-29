@@ -42,6 +42,10 @@ struct Args {
     #[arg(long)]
     seed: Option<u64>,
 
+    /// Spell a message with letter shells, one word at a time
+    #[arg(long, value_name = "TEXT")]
+    text: Option<String>,
+
     /// Exit as soon as any key is pressed
     #[arg(long)]
     any_key: bool,
@@ -137,7 +141,14 @@ fn default_seed() -> u64 {
 }
 
 fn run(args: Args, seed: u64, palette: Option<usize>, kind: Option<Kind>) -> io::Result<()> {
-    let mut app = App::new(seed, args.density.max(0.05), palette, args.any_key, kind);
+    let mut app = App::new(
+        seed,
+        args.density.max(0.05),
+        palette,
+        args.any_key,
+        kind,
+        args.text.clone(),
+    );
 
     terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -215,7 +226,14 @@ fn screenshot_mode(
 ) -> Result<(), String> {
     let (w, h) =
         parse_size(&args.size).ok_or_else(|| "invalid --size, expected WxH".to_string())?;
-    let mut app = App::new(seed, args.density.max(0.05), palette, args.any_key, kind);
+    let mut app = App::new(
+        seed,
+        args.density.max(0.05),
+        palette,
+        args.any_key,
+        kind,
+        args.text.clone(),
+    );
     app.ensure(w as usize, h as usize);
 
     let steps = (args.warmup.max(0.0) * 60.0) as usize;
