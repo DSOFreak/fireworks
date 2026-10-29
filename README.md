@@ -4,7 +4,7 @@ A pyrotechnic screensaver for your terminal. Rockets climb out of a distant
 city, burst into peonies, willows, rings, palms and hearts, and the whole show
 is mirrored in the water below.
 
-![fireworks over a city skyline](docs/show.png)
+![fireworks over a city skyline](docs/show.gif)
 
 Written in Rust with [ratatui](https://ratatui.rs) and crossterm. No external
 assets, no network, no configuration required.
@@ -59,7 +59,7 @@ so the word writes itself across the sky before the next one goes up.
 - `--text-speed` scales the whole pacing (2 = twice as fast, 0.5 = leisurely).
 - The message loops forever, so it works as a party screensaver.
 
-![HAPPY BIRTHDAY spelled with letter shells](docs/text.png)
+![HAPPY BIRTHDAY spelled with letter shells](docs/happy.gif)
 
 ## Run it
 
@@ -89,7 +89,7 @@ cargo run --release -- --any-key
 Palettes: `classic`, `ember`, `ocean`, `aurora`, `candy`, `neon`, `gold`,
 `rainbow`, or `random` to pick per shell.
 
-![help overlay](docs/help.png)
+![help and stats panels](docs/help.gif)
 
 ## How it works
 
@@ -117,6 +117,9 @@ after a few milliseconds if they never complete.
 cargo test        # simulation, palette and renderer checks
 cargo clippy --all-targets -- -D warnings
 ```
+
+The README GIFs are reproducible: `docs/make-gif.sh` renders them from seeded
+sessions (it needs ImageMagick, ffmpeg, tmux and python3 with Pillow).
 
 Handy hidden flags for poking at the look without a terminal:
 

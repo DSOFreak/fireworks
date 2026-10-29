@@ -39,6 +39,9 @@ pub struct Renderer {
     block: usize,
     pub exposure: f32,
     pub bloom_strength: f32,
+    /// Ordered dithering hides banding but lights up almost every pixel each
+    /// frame, which costs a lot in a GIF. Off for recording.
+    pub dither: bool,
 }
 
 impl Default for Renderer {
@@ -57,6 +60,7 @@ impl Default for Renderer {
             block: 4,
             exposure: 1.5,
             bloom_strength: 0.35,
+            dither: true,
         }
     }
 }
@@ -296,7 +300,11 @@ impl Renderer {
         let nx = (x as f32 / (self.sw - 1).max(1) as f32) * 2.0 - 1.0;
         let ny = (y as f32 / (self.sh - 1).max(1) as f32) * 2.0 - 1.0;
         let vig = 1.0 - 0.26 * (nx * nx * 0.55 + ny * ny * 0.45) - 0.04;
-        let d = (BAYER[y & 3][x & 3] / 16.0 - 0.5) / 255.0;
+        let d = if self.dither {
+            (BAYER[y & 3][x & 3] / 16.0 - 0.5) / 255.0
+        } else {
+            0.0
+        };
         let k = self.exposure * vig;
         let v = [c[0] * k, c[1] * k, c[2] * k];
         let l = luminance(v);

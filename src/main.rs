@@ -74,6 +74,14 @@ struct Args {
     #[arg(long, hide = true)]
     ui: bool,
 
+    /// Hide the startup hint in --screenshot frames
+    #[arg(long, hide = true)]
+    no_hint: bool,
+
+    /// Disable ordered dithering (smaller GIFs, slight banding)
+    #[arg(long, hide = true)]
+    no_dither: bool,
+
     /// Force every shell to be one style (dev aid)
     #[arg(long, value_name = "STYLE", hide = true)]
     kind: Option<String>,
@@ -243,6 +251,12 @@ fn screenshot_mode(
         app.help = true;
         app.stats = true;
         app.hint = 9.0;
+    }
+    if args.no_hint {
+        app.hint = 0.0;
+    }
+    if args.no_dither {
+        app.renderer.dither = false;
     }
     let mut buf = Buffer::empty(Rect::new(0, 0, w, h));
     app.render(&mut buf);
