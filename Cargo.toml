@@ -3,6 +3,7 @@ name = "fireworks"
 version = "0.1.0"
 edition = "2024"
 description = "A pyrotechnic screensaver for the terminal"
+license = "MIT"
 keywords = ["tui", "terminal", "fireworks", "screensaver", "ratatui"]
 categories = ["command-line-interface", "graphics"]
 

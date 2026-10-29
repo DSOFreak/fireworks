@@ -130,3 +130,7 @@ cargo run --release -- --screenshot out.ppm --warmup 6 --seed 12
 # force every shell to one style (peony, ring, heart, ...)
 cargo run --release -- --screenshot ring.ppm --kind ring --warmup 5
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
