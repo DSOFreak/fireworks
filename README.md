@@ -1,0 +1,104 @@
+# fireworks
+
+A pyrotechnic screensaver for your terminal. Rockets climb out of a distant
+city, burst into peonies, willows, rings, palms and hearts, and the whole show
+is mirrored in the water below.
+
+![fireworks over a city skyline](docs/show.png)
+
+Written in Rust with [ratatui](https://ratatui.rs) and crossterm. No external
+assets, no network, no configuration required.
+
+## Highlights
+
+- **Nine shell styles** — peony, chrysanthemum, willow, ring, palm, crossette,
+  strobe, heart and spiral, each with its own physics.
+- **Real colour** — per-cell 24-bit colour, a persistence buffer for glowing
+  comet trails, bloom, a filmic luminance tone curve and ordered dithering.
+- **A scene, not just sprites** — gradient night sky, drifting nebula, twinkling
+  stars, shooting stars, a lit city skyline and rippling water reflections.
+- **Two sub-pixels per cell** — an upper-half block paints the top half of each
+  cell with the foreground colour and the bottom half with the background, which
+  doubles the vertical resolution and keeps sparks square.
+- **Show dynamics** — random pacing, twin shells, and occasional multi-shell
+  finales, so no two minutes look the same.
+- **Screensaver friendly** — `--any-key` quits on the first key press; `--seed`
+  makes a show reproducible.
+
+|                    | |
+|--------------------|---|
+| `space`            | pause / resume |
+| `f`                | launch a shell |
+| `c`                | cycle palette |
+| `w`                | water reflection on/off |
+| `s`                | stars on/off |
+| `l`                | skyline on/off |
+| `+` / `-`          | launch rate |
+| `d`                | performance stats |
+| `h`                | help |
+| `q` / `esc`        | quit |
+
+## Run it
+
+```sh
+cargo run --release
+```
+
+As a screensaver, exit on any key:
+
+```sh
+cargo run --release -- --any-key
+```
+
+## Options
+
+```
+--fps <FPS>          Target frame rate [default: 60, 30 over ssh]
+--density <DENSITY>  Launch rate multiplier [default: 1]
+--palette <NAME>     Colour palette (see --palettes) [default: random]
+--seed <SEED>        Seed the show for a reproducible display
+--any-key            Exit as soon as any key is pressed
+--palettes           List the available palettes and exit
+```
+
+Palettes: `classic`, `ember`, `ocean`, `aurora`, `candy`, `neon`, `gold`,
+`rainbow`, or `random` to pick per shell.
+
+![help overlay](docs/help.png)
+
+## How it works
+
+The whole scene is simulated in floating point at sub-pixel resolution, then
+quantised to terminal cells once per frame:
+
+1. **Sparks** live in an additive buffer that is multiplied by a decay factor
+   instead of being cleared, so every particle leaves a fading trail. Physics is
+   plain semi-implicit Euler with per-particle gravity and drag.
+2. **The grade** maps luminance through `1 - e^-x` and carries chroma along, so
+   dense clusters of gold sparks stay gold instead of bleaching to white, then
+   adds bloom, a vignette and 4×4 Bayer dither against banding.
+3. **The terminal** gets one `▀` per cell: foreground is the top sub-pixel,
+   background the bottom one.
+
+Input is polled with a zero timeout and decoded locally rather than through a
+blocking terminal read. A terminal (especially over SSH) may deliver an escape
+sequence in several packets; a blocking read would freeze the show until the
+next key, so partial sequences are buffered for the next frame and discarded
+after a few milliseconds if they never complete.
+
+## Development
+
+```sh
+cargo test        # simulation, palette and renderer checks
+cargo clippy --all-targets -- -D warnings
+```
+
+Handy hidden flags for poking at the look without a terminal:
+
+```sh
+# render a frame of a specific show to a PPM image
+cargo run --release -- --screenshot out.ppm --warmup 6 --seed 12
+
+# force every shell to one style (peony, ring, heart, ...)
+cargo run --release -- --screenshot ring.ppm --kind ring --warmup 5
+```
